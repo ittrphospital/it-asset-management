@@ -1,3 +1,4 @@
+import Accounting from './Accounting';
 import MedicalEquipment from './MedicalEquipment';
 import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
@@ -3449,13 +3450,17 @@ function MainAssetApp() {
     </div>
   )
 }
-
+// ✅ โค้ดใหม่ที่แก้ไขแล้ว
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<MainAssetApp />} />
         <Route path="/purchase" element={<MedicalEquipment />} />
+        
+        {/* เพิ่มบรรทัดนี้ลงไปเพื่อรองรับลิงก์ /accounting */}
+        <Route path="/accounting" element={<Accounting />} />
+
         <Route path="*" element={<MainAssetApp />} />
       </Routes>
     </BrowserRouter>
