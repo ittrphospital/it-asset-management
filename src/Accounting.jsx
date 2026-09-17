@@ -333,7 +333,10 @@ export default function Accounting() {
       let fileName = 'LINK';
 
       if (formData.dataType === 'file' && formData.file) {
-        fileName = `${Date.now()}_${formData.file.name}`;
+        // ดึงเฉพาะนามสกุลไฟล์ (.xlsx, .pdf, .docx)
+const fileExt = formData.file.name.split('.').pop();
+// ตั้งชื่อไฟล์ใหม่ด้วย Timestamp และอักษรภาษาอังกฤษสุ่ม เพื่อหลีกเลี่ยงภาษาไทยและเว้นวรรค
+fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
         const { error: uploadError } = await supabase.storage
           .from('accounting-forms')
           .upload(fileName, formData.file);
