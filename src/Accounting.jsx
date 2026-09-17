@@ -1,24 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 
 export default function Accounting() {
   const [currentTab, setCurrentTab] = useState('all');
   const [isAdmin, setIsAdmin] = useState(true);
 
+  // Sidebar & Dropdown Navigation State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isFavoritesOpen, setIsFavoritesOpen] = useState(true);
+  const [isFavoritesOpen, setIsFavoritesOpen] = useState(false);
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(true);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
 
+  // State สำหรับเปิด-ปิดกลุ่มย่อยใน Sidebar
+  const [openGroupIds, setOpenGroupIds] = useState([]);
+
+  // Selection & Filter State
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedDocIds, setSelectedDocIds] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFileType, setSelectedFileType] = useState('all');
   const [sortBy, setSortBy] = useState('latest');
 
+  // Data & Modal State
   const [documentList, setDocumentList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [previewDoc, setPreviewDoc] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [targetCategory, setTargetCategory] = useState('hr');
 
@@ -26,28 +35,92 @@ export default function Accounting() {
   const [formData, setFormData] = useState({
     title: '',
     category: 'it',
-    department: 'ฝ่ายสารสนเทศ',
+    department: 'ฝ่ายเทคโนโลยีสารสนเทศ',
     version: '1.0',
     description: '',
-    dataType: 'file', // 'file' หรือ 'link'
+    dataType: 'file',
     externalUrl: '',
     file: null
   });
 
-  const macFontStack = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif';
+  // Form Edit State
+  const [editFormData, setEditFormData] = useState({
+    id: null,
+    title: '',
+    category: 'it',
+    department: 'ฝ่ายเทคโนโลยีสารสนเทศ',
+    version: '1.0',
+    description: '',
+    dataType: 'file',
+    externalUrl: '',
+    existingUrl: '',
+    existingFileName: '',
+    file: null
+  });
 
-  const categoriesList = [
-    { id: 'hr', label: 'บุคคล / HR', icon: '👤', dept: 'ฝ่ายบุคคล' },
-    { id: 'finance', label: 'การเงิน', icon: '💰', dept: 'ฝ่ายการเงิน' },
-    { id: 'purchase', label: 'จัดซื้อ', icon: '🛒', dept: 'ฝ่ายจัดซื้อ' },
-    { id: 'it', label: 'IT', icon: '🖥️', dept: 'ฝ่ายสารสนเทศ' },
-    { id: 'admin', label: 'ธุรการ', icon: '🏢', dept: 'ฝ่ายธุรการ' },
-    { id: 'warehouse', label: 'คลังสินค้า', icon: '📦', dept: 'ฝ่ายคลังสินค้า' },
-    { id: 'request', label: 'แบบคำขอ', icon: '📋', dept: 'ทุกแผนก' },
-    { id: 'general', label: 'แบบฟอร์มทั่วไป', icon: '📑', dept: 'ส่วนกลาง' },
+  // 🪟 Windows 11 Font Stack
+  const fluentFontStack = '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Sukhumvit Set", Tahoma, sans-serif';
+
+  // 📌 กลุ่มหมวดหมู่ภาษาไทยเป็นทางการ
+  const categoryGroups = [
+    {
+      id: 'dept',
+      groupName: '🏢 จำแนกตามฝ่ายงาน',
+      items: [
+        { id: 'hr', label: 'ฝ่ายทรัพยากรบุคคล (HR)', icon: '👤', dept: 'ฝ่ายทรัพยากรบุคคล' },
+        { id: 'finance', label: 'ฝ่ายการเงินและบัญชี', icon: '💰', dept: 'ฝ่ายการเงินและบัญชี' },
+        { id: 'purchase', label: 'ฝ่ายจัดซื้อและพัสดุ', icon: '🛒', dept: 'ฝ่ายจัดซื้อ' },
+        { id: 'it', label: 'ฝ่ายเทคโนโลยีสารสนเทศ', icon: '🖥️', dept: 'ฝ่ายเทคโนโลยีสารสนเทศ' },
+        { id: 'admin', label: 'ฝ่ายบริหารงานทั่วไป', icon: '🏢', dept: 'ฝ่ายบริหารงานทั่วไป' },
+        { id: 'warehouse', label: 'ฝ่ายคลังสินค้า', icon: '📦', dept: 'ฝ่ายคลังสินค้า' },
+      ]
+    },
+    {
+      id: 'approval',
+      groupName: '✍️ เอกสารเสนอขออนุมัติ',
+      items: [
+        { id: 'req_supervisor', label: 'ขออนุมัติผู้บังคับบัญชา', icon: '📝', dept: 'ส่วนกลาง' },
+        { id: 'req_executive', label: 'ขออนุมัติผู้บริหาร', icon: '✒️', dept: 'ส่วนกลาง' },
+      ]
+    },
+    {
+      id: 'request',
+      groupName: '📋 แบบคำร้องและแบบอนุมัติทั่วไป',
+      items: [
+        { id: 'req_purchase', label: 'ใบขอซื้อ / ขอจ้าง (PR)', icon: '🛍️', dept: 'ฝ่ายจัดซื้อ' },
+        { id: 'req_transfer', label: 'ใบขอโอนย้าย / สับเปลี่ยน', icon: '🔄', dept: 'ฝ่ายบริหารงานทั่วไป' },
+        { id: 'request', label: 'แบบคำร้องทั่วไป', icon: '📋', dept: 'ส่วนกลาง' },
+      ]
+    },
+    {
+      id: 'general',
+      groupName: '📑 แบบฟอร์มมาตรฐานส่วนกลาง',
+      items: [
+        { id: 'general', label: 'แบบฟอร์มเอกสารทั่วไป', icon: '📑', dept: 'ส่วนกลาง' },
+      ]
+    }
   ];
 
-  // 🔄 1. ดึงข้อมูลจาก Supabase Database
+  const categoriesList = categoryGroups.flatMap(group => group.items);
+
+  const toggleGroup = (groupId) => {
+    setOpenGroupIds(prev => 
+      prev.includes(groupId) 
+        ? prev.filter(id => id !== groupId) 
+        : [...prev, groupId]
+    );
+  };
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsCategoryDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   useEffect(() => {
     fetchDocuments();
   }, []);
@@ -77,10 +150,10 @@ export default function Accounting() {
             category: doc.category || 'general',
             department: doc.department || getDeptByCategory(doc.category),
             version: doc.version || '1.0',
-            description: doc.description || 'ไม่มีคำอธิบายรายละเอียด',
+            description: doc.description || 'ไม่มีรายละเอียดเพิ่มเติม',
             fileType: ext,
             fileUrl: doc.blank_file_url || '#',
-            fileName: doc.blank_file_name || 'แบบฟอร์ม.pdf',
+            fileName: doc.blank_file_name || 'แบบฟอร์มเอกสาร.pdf',
             createdAt: new Date(doc.created_at).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' }),
             rawDate: new Date(doc.created_at)
           };
@@ -89,7 +162,6 @@ export default function Accounting() {
       }
     } catch (err) {
       console.error('Fetch error:', err);
-      alert('ไม่สามารถเชื่อมต่อ Supabase ได้: ' + err.message);
     } finally {
       setIsLoading(false);
     }
@@ -106,10 +178,92 @@ export default function Accounting() {
     );
   };
 
-  // 🗑️ ลบข้อมูลใน Supabase
+  const handleOpenEditModal = () => {
+    if (selectedDocIds.length === 0) return;
+    if (selectedDocIds.length > 1) {
+      alert('โปรดเลือกรายการที่ต้องการแก้ไขเพียง 1 รายการเท่านั้น');
+      return;
+    }
+    const targetDoc = documentList.find(d => d.id === selectedDocIds[0]);
+    if (targetDoc) {
+      const isLink = targetDoc.fileType === 'LINK';
+      setEditFormData({
+        id: targetDoc.id,
+        title: targetDoc.title,
+        category: targetDoc.category,
+        department: targetDoc.department,
+        version: targetDoc.version,
+        description: targetDoc.description === 'ไม่มีรายละเอียดเพิ่มเติม' ? '' : targetDoc.description,
+        dataType: isLink ? 'link' : 'file',
+        externalUrl: isLink ? targetDoc.fileUrl : '',
+        existingUrl: targetDoc.fileUrl,
+        existingFileName: targetDoc.fileName,
+        file: null
+      });
+      setIsEditModalOpen(true);
+    }
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!editFormData.title.trim()) {
+      alert('โปรดระบุชื่อแบบฟอร์มเอกสาร');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      let publicUrl = editFormData.existingUrl;
+      let fileName = editFormData.existingFileName;
+
+      if (editFormData.dataType === 'link') {
+        publicUrl = editFormData.externalUrl || '#';
+        fileName = 'LINK';
+      } else if (editFormData.file) {
+        fileName = `${Date.now()}_${editFormData.file.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from('accounting-forms')
+          .upload(fileName, editFormData.file);
+
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage
+          .from('accounting-forms')
+          .getPublicUrl(fileName);
+
+        publicUrl = urlData.publicUrl;
+      }
+
+      const { error: dbError } = await supabase
+        .from('accounting_documents')
+        .update({
+          title: editFormData.title,
+          category: editFormData.category,
+          department: editFormData.department,
+          version: editFormData.version,
+          description: editFormData.description,
+          blank_file_url: publicUrl,
+          blank_file_name: fileName
+        })
+        .eq('id', editFormData.id);
+
+      if (dbError) throw dbError;
+
+      alert('ปรับปรุงข้อมูลแบบฟอร์มเอกสารเรียบร้อยแล้ว');
+      setIsEditModalOpen(false);
+      setSelectedDocIds([]);
+      fetchDocuments();
+
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการปรับปรุงข้อมูล: ' + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleBatchDelete = async () => {
     if (selectedDocIds.length === 0) return;
-    if (window.confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบรายการที่เลือก ${selectedDocIds.length} รายการ จาก Supabase?`)) {
+    if (window.confirm(`คุณต้องการลบแบบฟอร์มที่เลือกจำนวน ${selectedDocIds.length} รายการใช่หรือไม่?`)) {
       setIsLoading(true);
       try {
         const { error } = await supabase
@@ -119,11 +273,11 @@ export default function Accounting() {
 
         if (error) throw error;
 
-        alert('ลบรายการจาก Supabase เรียบร้อยแล้ว!');
+        alert('ลบรายการแบบฟอร์มเรียบร้อยแล้ว');
         setSelectedDocIds([]);
         fetchDocuments();
       } catch (err) {
-        alert('เกิดข้อผิดพลาดในการลบ: ' + err.message);
+        alert('เกิดข้อผิดพลาดในการลบรายการ: ' + err.message);
       } finally {
         setIsLoading(false);
       }
@@ -143,7 +297,6 @@ export default function Accounting() {
     });
   };
 
-  // 📁 ย้ายหมวดหมู่ใน Supabase
   const handleBatchCategorizeSubmit = async () => {
     setIsLoading(true);
     try {
@@ -155,7 +308,7 @@ export default function Accounting() {
 
       if (error) throw error;
 
-      alert(`ย้ายหมวดหมู่ใน Supabase ${selectedDocIds.length} รายการเรียบร้อยแล้ว!`);
+      alert(`เปลี่ยนหมวดหมู่แบบฟอร์มจำนวน ${selectedDocIds.length} รายการเรียบร้อยแล้ว`);
       setIsCategoryModalOpen(false);
       setSelectedDocIds([]);
       fetchDocuments();
@@ -166,11 +319,10 @@ export default function Accounting() {
     }
   };
 
-  // 📤 อัปโหลดไฟล์ขึ้น Supabase Storage และบันทึกลง Database
   const handleUploadSubmit = async (e) => {
     e.preventDefault();
     if (!formData.title.trim()) {
-      alert('กรุณากรอกชื่อแบบฟอร์ม');
+      alert('โปรดระบุชื่อแบบฟอร์มเอกสาร');
       return;
     }
 
@@ -179,17 +331,14 @@ export default function Accounting() {
       let publicUrl = formData.externalUrl || '#';
       let fileName = 'LINK';
 
-      // ถ้าเป็นไฟล์ -> อัปโหลดขึ้น Supabase Storage Bucket "accounting-forms"
       if (formData.dataType === 'file' && formData.file) {
         fileName = `${Date.now()}_${formData.file.name}`;
-        
         const { error: uploadError } = await supabase.storage
           .from('accounting-forms')
           .upload(fileName, formData.file);
 
         if (uploadError) throw uploadError;
 
-        // ดึง Public URL ของไฟล์ใน Storage
         const { data: urlData } = supabase.storage
           .from('accounting-forms')
           .getPublicUrl(fileName);
@@ -197,7 +346,6 @@ export default function Accounting() {
         publicUrl = urlData.publicUrl;
       }
 
-      // บันทึกรายละเอียดลงตาราง accounting_documents
       const { error: dbError } = await supabase
         .from('accounting_documents')
         .insert([
@@ -214,13 +362,13 @@ export default function Accounting() {
 
       if (dbError) throw dbError;
 
-      alert('อัปโหลดไฟล์ขึ้น Supabase เรียบร้อยแล้ว!');
+      alert('เพิ่มแบบฟอร์มเอกสารสำเร็จ');
       setIsAddModalOpen(false);
-      setFormData({ title: '', category: 'it', department: 'ฝ่ายสารสนเทศ', version: '1.0', description: '', dataType: 'file', externalUrl: '', file: null });
+      setFormData({ title: '', category: 'it', department: 'ฝ่ายเทคโนโลยีสารสนเทศ', version: '1.0', description: '', dataType: 'file', externalUrl: '', file: null });
       fetchDocuments();
 
     } catch (err) {
-      alert('เกิดข้อผิดพลาดในการบันทึกขึ้น Supabase: ' + err.message);
+      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + err.message);
     } finally {
       setIsLoading(false);
     }
@@ -238,66 +386,184 @@ export default function Accounting() {
   });
 
   const selectedCatObj = selectedCategory === 'all' 
-    ? { label: 'แบบฟอร์มทั้งหมด', icon: '📂' }
-    : (categoriesList.find(c => c.id === selectedCategory) || { label: 'หมวดหมู่', icon: '📁' });
+    ? { label: 'แบบฟอร์มเอกสารทั้งหมด', icon: '📂' }
+    : (categoriesList.find(c => c.id === selectedCategory) || { label: 'หมวดหมู่เอกสาร', icon: '📁' });
+
+  // 🪟 Windows 11 Component Styles
+  const win11PrimaryBtn = {
+    padding: '7px 18px',
+    backgroundColor: '#005fb8',
+    color: '#ffffff',
+    border: '1px solid #005fb8',
+    borderRadius: '4px',
+    fontSize: '13px',
+    fontWeight: 600,
+    fontFamily: fluentFontStack,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.08)',
+    transition: 'all 0.15s ease-in-out'
+  };
+
+  const win11SecondaryBtn = {
+    padding: '7px 14px',
+    backgroundColor: '#ffffff',
+    color: '#1a1a1a',
+    border: '1px solid #d1d1d1',
+    borderRadius: '4px',
+    fontSize: '13px',
+    fontWeight: 500,
+    fontFamily: fluentFontStack,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+    transition: 'all 0.15s ease-in-out'
+  };
+
+  const win11Input = {
+    padding: '8px 12px',
+    borderRadius: '4px',
+    border: '1px solid #d1d1d1',
+    backgroundColor: '#ffffff',
+    fontSize: '13.5px',
+    fontFamily: fluentFontStack,
+    outline: 'none',
+    boxSizing: 'border-box'
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f5f5f7', color: '#1d1d1f', fontFamily: macFontStack }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f3f3f3', color: '#1a1a1a', fontFamily: fluentFontStack }}>
       
       {/* 1. TOP TOOLBAR */}
-      <header style={{ height: '56px', backgroundColor: '#ffffff', borderBottom: '1px solid #e5e5e5', display: 'flex', alignItems: 'center', padding: '0 20px', justifyContent: 'space-between', flexShrink: 0, position: 'sticky', top: 0, zIndex: 100 }}>
+      <header style={{ height: '52px', backgroundColor: '#ffffff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', padding: '0 20px', justifyContent: 'space-between', flexShrink: 0, position: 'sticky', top: 0, zIndex: 100 }}>
         
         {isAdmin && selectedDocIds.length > 0 ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ border: 'none', background: 'none', fontSize: '18px', cursor: 'pointer' }}>☰</button>
-              <span style={{ fontSize: '15px', fontWeight: 600, color: '#0071e3' }}>
-                เลือก {selectedDocIds.length} รายการ
+              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={win11SecondaryBtn}>☰</button>
+              <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#005fb8' }}>
+                เลือกแล้ว {selectedDocIds.length} รายการ
               </span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <button onClick={() => alert(`แก้ไขรายการ: ${selectedDocIds.join(', ')}`)} style={{ padding: '8px 14px', backgroundColor: '#ffffff', border: '1px solid #d2d2d7', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}>✏️ แก้ไข</button>
-              <button onClick={() => setIsCategoryModalOpen(true)} style={{ padding: '8px 14px', backgroundColor: '#ffffff', border: '1px solid #d2d2d7', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}>📁 จัดหมวดหมู่</button>
-              <button onClick={handleBatchDownload} style={{ padding: '8px 14px', backgroundColor: '#ffffff', border: '1px solid #d2d2d7', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}>⬇️ ดาวน์โหลด</button>
-              <button onClick={handleBatchDelete} style={{ padding: '8px 16px', backgroundColor: '#ff3b30', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>🗑️ ลบ</button>
-              <button onClick={() => setSelectedDocIds([])} style={{ border: 'none', background: 'none', color: '#86868b', fontSize: '13px', cursor: 'pointer', marginLeft: '6px' }}>✕ ยกเลิก</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button onClick={handleOpenEditModal} style={win11SecondaryBtn}>✏️ แก้ไขข้อมูล</button>
+              <button onClick={() => setIsCategoryModalOpen(true)} style={win11SecondaryBtn}>📁 จัดหมวดหมู่</button>
+              <button onClick={handleBatchDownload} style={win11SecondaryBtn}>⬇️ ดาวน์โหลด</button>
+              <button onClick={handleBatchDelete} style={{ ...win11SecondaryBtn, color: '#c42b1c', borderColor: '#f3d6d3', backgroundColor: '#fdf3f2' }}>🗑️ ลบรายการ</button>
+              <button onClick={() => setSelectedDocIds([])} style={win11SecondaryBtn}>✕ ยกเลิก</button>
             </div>
           </div>
         ) : (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ border: 'none', background: 'none', fontSize: '18px', cursor: 'pointer' }}>☰</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={win11SecondaryBtn}>☰</button>
 
-              <nav style={{ display: 'flex', gap: '6px' }}>
-                <button onClick={() => { setCurrentTab('home'); setSelectedCategory('all'); }} style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', backgroundColor: currentTab === 'home' ? '#e8f2ff' : 'transparent', color: currentTab === 'home' ? '#0071e3' : '#515154', fontWeight: currentTab === 'home' ? 600 : 400, fontSize: '13.5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>🏠</span> <span>หน้าแรก</span>
+              <nav style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                <button 
+                  onClick={() => { setSelectedCategory('all'); setCurrentTab('home'); }} 
+                  style={currentTab === 'home' && selectedCategory === 'all' ? win11PrimaryBtn : win11SecondaryBtn}
+                >
+                  🏠 หน้าหลัก
                 </button>
-                <button onClick={() => setCurrentTab('categories')} style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', backgroundColor: currentTab === 'categories' ? '#e8f2ff' : 'transparent', color: currentTab === 'categories' ? '#0071e3' : '#515154', fontWeight: currentTab === 'categories' ? 600 : 400, fontSize: '13.5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>📁</span> <span>หมวดหมู่</span>
-                </button>
-                <button onClick={() => { setCurrentTab('all'); setSelectedCategory('all'); }} style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', backgroundColor: currentTab === 'all' ? '#e8f2ff' : 'transparent', color: currentTab === 'all' ? '#0071e3' : '#515154', fontWeight: currentTab === 'all' ? 600 : 400, fontSize: '13.5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>📄</span> <span>แบบฟอร์มทั้งหมด</span>
+
+                {/* 📁 หมวดหมู่ Dropdown Menu */}
+                <div style={{ position: 'relative' }} ref={dropdownRef}>
+                  <button 
+                    onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+                    style={isCategoryDropdownOpen || selectedCategory !== 'all' ? win11PrimaryBtn : win11SecondaryBtn}
+                  >
+                    📁 {selectedCategory === 'all' ? 'หมวดหมู่เอกสาร' : selectedCatObj.label}
+                    <span style={{ fontSize: '10px', marginLeft: '4px' }}>▼</span>
+                  </button>
+
+                  {isCategoryDropdownOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      marginTop: '4px',
+                      backgroundColor: '#ffffff',
+                      borderRadius: '8px',
+                      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)',
+                      border: '1px solid #e0e0e0',
+                      padding: '6px',
+                      minWidth: '240px',
+                      maxHeight: '380px',
+                      overflowY: 'auto',
+                      zIndex: 200
+                    }}>
+                      <button
+                        onClick={() => { setSelectedCategory('all'); setIsCategoryDropdownOpen(false); }}
+                        style={{ ...win11SecondaryBtn, width: '100%', justifyContent: 'flex-start', border: 'none', boxShadow: 'none', backgroundColor: selectedCategory === 'all' ? '#e5f0fb' : 'transparent', color: selectedCategory === 'all' ? '#005fb8' : '#1a1a1a' }}
+                      >
+                        📂 แบบฟอร์มเอกสารทั้งหมด
+                      </button>
+
+                      {categoryGroups.map((group, gIdx) => (
+                        <div key={gIdx} style={{ marginTop: '6px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#616161', padding: '4px 8px', borderTop: gIdx > 0 ? '1px solid #f0f0f0' : 'none' }}>
+                            {group.groupName}
+                          </div>
+                          {group.items.map(cat => (
+                            <button
+                              key={cat.id}
+                              onClick={() => {
+                                setSelectedCategory(cat.id);
+                                setCurrentTab('all');
+                                setIsCategoryDropdownOpen(false);
+                              }}
+                              style={{
+                                ...win11SecondaryBtn,
+                                width: '100%',
+                                justifyContent: 'flex-start',
+                                border: 'none',
+                                boxShadow: 'none',
+                                backgroundColor: selectedCategory === cat.id ? '#e5f0fb' : 'transparent',
+                                color: selectedCategory === cat.id ? '#005fb8' : '#1a1a1a',
+                                fontWeight: selectedCategory === cat.id ? 600 : 400
+                              }}
+                            >
+                              <span>{cat.icon}</span>
+                              <span>{cat.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button 
+                  onClick={() => { setSelectedCategory('all'); setCurrentTab('all'); }} 
+                  style={currentTab === 'all' && selectedCategory === 'all' ? win11PrimaryBtn : win11SecondaryBtn}
+                >
+                  📄 แบบฟอร์มทั้งหมด
                 </button>
               </nav>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <button onClick={() => { setIsAdmin(!isAdmin); setSelectedDocIds([]); }} style={{ padding: '5px 12px', borderRadius: '20px', border: isAdmin ? '1px solid #ff9500' : '1px solid #d2d2d7', backgroundColor: isAdmin ? '#fff9e6' : '#ffffff', color: isAdmin ? '#d97706' : '#515154', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
-                {isAdmin ? '🛠️ Admin' : '👤 User'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button onClick={() => { setIsAdmin(!isAdmin); setSelectedDocIds([]); }} style={win11SecondaryBtn}>
+                {isAdmin ? '🛠️ โหมด Admin' : '👤 โหมด User'}
               </button>
 
               {!isAdmin ? (
                 <input
                   type="text"
-                  placeholder="🔍 ค้นหาแบบฟอร์ม..."
+                  placeholder="🔍 ค้นหาแบบฟอร์มเอกสาร..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{ width: '220px', padding: '8px 14px', borderRadius: '10px', border: '1px solid #d2d2d7', backgroundColor: '#f9f9fb', fontSize: '13px', outline: 'none' }}
+                  style={{ ...win11Input, width: '200px' }}
                 />
               ) : (
-                <button onClick={() => setIsAddModalOpen(true)} style={{ height: '36px', padding: '0 18px', backgroundColor: '#0071e3', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 6px rgba(0, 113, 227, 0.25)' }}>
-                  <span>＋</span> <span>เพิ่มแบบฟอร์ม</span>
+                /* 📌 ปุ่มเพิ่มแบบฟอร์มเอกสาร สไตล์ Windows 11 Fluent Blue */
+                <button onClick={() => setIsAddModalOpen(true)} style={win11PrimaryBtn}>
+                  <span>＋</span> <span>เพิ่มแบบฟอร์มเอกสาร</span>
                 </button>
               )}
             </div>
@@ -311,15 +577,16 @@ export default function Accounting() {
         
         {/* Left Sidebar Menu */}
         {isSidebarOpen && (
-          <aside style={{ width: '250px', backgroundColor: '#ffffff', borderRight: '1px solid #e5e5e5', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '12px', flexShrink: 0, overflowY: 'auto' }}>
+          <aside style={{ width: '250px', backgroundColor: '#f9f9f9', borderRight: '1px solid #e0e0e0', padding: '16px 10px', display: 'flex', flexDirection: 'column', gap: '14px', flexShrink: 0, overflowY: 'auto' }}>
             
+            {/* รายการทางลัด */}
             <div>
               <button
                 onClick={() => setIsFavoritesOpen(!isFavoritesOpen)}
-                style={{ width: '100%', padding: '6px 8px', backgroundColor: 'transparent', border: 'none', color: '#1d1d1f', fontWeight: 700, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', textAlign: 'left' }}
+                style={{ width: '100%', padding: '6px 8px', backgroundColor: 'transparent', border: 'none', color: '#1a1a1a', fontWeight: 700, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', textAlign: 'left', borderRadius: '4px' }}
               >
-                <span style={{ fontSize: '11px', color: '#86868b', transition: 'transform 0.2s', display: 'inline-block', transform: isFavoritesOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-                <span>เมนูด่วน</span>
+                <span style={{ fontSize: '10px', color: '#616161', transition: 'transform 0.2s', display: 'inline-block', transform: isFavoritesOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                <span>รายการทางลัด</span>
               </button>
 
               {isFavoritesOpen && (
@@ -329,80 +596,104 @@ export default function Accounting() {
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      justify: 'space-between',
-                      padding: '8px 12px',
-                      borderRadius: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '4px',
                       border: 'none',
-                      backgroundColor: selectedCategory === 'all' ? '#e8f2ff' : 'transparent',
-                      color: selectedCategory === 'all' ? '#0071e3' : '#515154',
+                      backgroundColor: selectedCategory === 'all' ? '#e5f0fb' : 'transparent',
+                      color: selectedCategory === 'all' ? '#005fb8' : '#424242',
                       fontWeight: selectedCategory === 'all' ? 600 : 400,
                       fontSize: '13px',
                       cursor: 'pointer',
-                      textAlign: 'left'
+                      textAlign: 'left',
+                      gap: '8px'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span>📂</span>
-                      <span>แบบฟอร์มทั้งหมด</span>
-                    </div>
-                    <span style={{ fontSize: '11px', backgroundColor: '#f2f2f7', color: '#86868b', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>
-                      {documentList.length}
-                    </span>
+                    <span>📂</span>
+                    <span>แบบฟอร์มเอกสารทั้งหมด</span>
                   </button>
                 </div>
               )}
             </div>
 
+            {/* หมวดหมู่แบบฟอร์มเอกสาร */}
             <div>
               <button
                 onClick={() => setIsCategoriesOpen(!isCategoriesOpen)}
-                style={{ width: '100%', padding: '6px 8px', backgroundColor: 'transparent', border: 'none', color: '#1d1d1f', fontWeight: 700, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', textAlign: 'left' }}
+                style={{ width: '100%', padding: '6px 8px', backgroundColor: 'transparent', border: 'none', color: '#1a1a1a', fontWeight: 700, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', textAlign: 'left', borderRadius: '4px' }}
               >
-                <span style={{ fontSize: '11px', color: '#86868b', transition: 'transform 0.2s', display: 'inline-block', transform: isCategoriesOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-                <span>หมวดหมู่แบบฟอร์ม</span>
+                <span style={{ fontSize: '10px', color: '#616161', transition: 'transform 0.2s', display: 'inline-block', transform: isCategoriesOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                <span>หมวดหมู่แบบฟอร์มเอกสาร</span>
               </button>
 
               {isCategoriesOpen && (
-                <div style={{ paddingLeft: '12px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  {categoriesList.map(cat => {
-                    const isSelected = selectedCategory === cat.id;
-                    const count = documentList.filter(d => d.category === cat.id).length;
+                <div style={{ paddingLeft: '8px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {categoryGroups.map((group) => {
+                    const isGroupOpen = openGroupIds.includes(group.id);
 
                     return (
-                      <button
-                        key={cat.id}
-                        onClick={() => {
-                          setSelectedCategory(cat.id);
-                          setCurrentTab('all');
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justify: 'space-between',
-                          padding: '8px 12px',
-                          borderRadius: '8px',
-                          border: 'none',
-                          backgroundColor: isSelected ? '#e8f2ff' : 'transparent',
-                          color: isSelected ? '#0071e3' : '#515154',
-                          fontWeight: isSelected ? 600 : 400,
-                          fontSize: '13px',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          transition: 'all 0.15s'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '15px' }}>{cat.icon}</span>
-                          <span>{cat.label}</span>
-                        </div>
-                        
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '11px', backgroundColor: isSelected ? '#ffffff' : '#f2f2f7', color: isSelected ? '#0071e3' : '#86868b', padding: '2px 7px', borderRadius: '10px', fontWeight: 600 }}>
-                            {count}
+                      <div key={group.id}>
+                        <button
+                          onClick={() => toggleGroup(group.id)}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            fontSize: '13px',
+                            fontWeight: 500,
+                            color: '#1a1a1a',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          <span style={{ fontSize: '10px', color: '#616161', transition: 'transform 0.2s', display: 'inline-block', transform: isGroupOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                            ▶
                           </span>
-                          <span style={{ fontSize: '10px', color: isSelected ? '#0071e3' : '#c7c7cc' }}>›</span>
-                        </div>
-                      </button>
+                          <span>{group.groupName}</span>
+                        </button>
+
+                        {isGroupOpen && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '12px', marginTop: '2px' }}>
+                            {group.items.map(cat => {
+                              const isSelected = selectedCategory === cat.id;
+
+                              return (
+                                <button
+                                  key={cat.id}
+                                  onClick={() => {
+                                    setSelectedCategory(cat.id);
+                                    setCurrentTab('all');
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    padding: '7px 10px',
+                                    borderRadius: '4px',
+                                    border: 'none',
+                                    backgroundColor: isSelected ? '#e5f0fb' : 'transparent',
+                                    color: isSelected ? '#005fb8' : '#424242',
+                                    fontWeight: isSelected ? 600 : 400,
+                                    fontSize: '13px',
+                                    cursor: 'pointer',
+                                    textAlign: 'left',
+                                    gap: '8px',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }}
+                                >
+                                  <span style={{ fontSize: '14px', flexShrink: 0 }}>{cat.icon}</span>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -413,44 +704,44 @@ export default function Accounting() {
         )}
 
         {/* Right Content Area */}
-        <main style={{ flex: 1, padding: '28px 36px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <main style={{ flex: 1, padding: '24px 32px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e5e5', paddingBottom: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e0e0e0', paddingBottom: '14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '24px' }}>{selectedCatObj.icon}</span>
-              <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0, color: '#1d1d1f' }}>
+              <span style={{ fontSize: '22px' }}>{selectedCatObj.icon}</span>
+              <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#1a1a1a' }}>
                 {selectedCatObj.label}
               </h2>
-              <span style={{ fontSize: '13px', color: '#86868b', fontWeight: 400 }}>
+              <span style={{ fontSize: '13px', color: '#616161', fontWeight: 400 }}>
                 ({filteredDocs.length} รายการ)
               </span>
             </div>
 
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <select value={selectedFileType} onChange={(e) => setSelectedFileType(e.target.value)} style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #d2d2d7', fontSize: '12.5px', outline: 'none', backgroundColor: '#ffffff' }}>
-                <option value="all">ทุกประเภทไฟล์ / ลิงก์ ▼</option>
-                <option value="docx">DOCX (Word)</option>
-                <option value="xlsx">XLSX (Excel)</option>
-                <option value="pdf">PDF</option>
-                <option value="link">LINK (ลิงก์ภายนอก)</option>
+              <select value={selectedFileType} onChange={(e) => setSelectedFileType(e.target.value)} style={{ ...win11Input, fontSize: '12.5px' }}>
+                <option value="all">ประเภทไฟล์และลิงก์ทั้งหมด ▼</option>
+                <option value="docx">DOCX (Microsoft Word)</option>
+                <option value="xlsx">XLSX (Microsoft Excel)</option>
+                <option value="pdf">PDF (Document)</option>
+                <option value="link">LINK (ระบบภายนอก)</option>
               </select>
 
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #d2d2d7', fontSize: '12.5px', outline: 'none', backgroundColor: '#ffffff' }}>
-                <option value="latest">เรียงตาม: ล่าสุด ▼</option>
-                <option value="title">เรียงตาม: ชื่อ A-Z ▼</option>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ ...win11Input, fontSize: '12.5px' }}>
+                <option value="latest">เรียงลำดับ: ปรับปรุงล่าสุด ▼</option>
+                <option value="title">เรียงลำดับ: ตัวอักษร ก-ฮ ▼</option>
               </select>
             </div>
           </div>
 
           {/* Document Cards */}
           {isLoading ? (
-            <div style={{ textAlign: 'center', color: '#86868b', marginTop: '40px' }}>⏳ กำลังดึงข้อมูลจาก Supabase...</div>
+            <div style={{ textAlign: 'center', color: '#616161', marginTop: '40px', fontSize: '13.5px' }}>⏳ กำลังโหลดข้อมูลแบบฟอร์มเอกสาร...</div>
           ) : filteredDocs.length === 0 ? (
-            <div style={{ textAlign: 'center', color: '#86868b', marginTop: '40px', fontSize: '14px' }}>
-              ยังไม่มีแบบฟอร์มหรือลิงก์ในระบบ Supabase (กด "+ เพิ่มแบบฟอร์ม" ด้านบนเพื่อเพิ่มข้อมูล)
+            <div style={{ textAlign: 'center', color: '#616161', marginTop: '40px', fontSize: '13.5px' }}>
+              ไม่พบบันทึกแบบฟอร์มเอกสารในระบบ
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {filteredDocs.map(doc => {
                 const isChecked = selectedDocIds.includes(doc.id);
                 const isLink = doc.fileType === 'LINK';
@@ -459,81 +750,79 @@ export default function Accounting() {
                   <div
                     key={doc.id}
                     style={{
-                      backgroundColor: isChecked ? '#f0f7ff' : '#ffffff',
-                      borderRadius: '14px',
-                      padding: '20px 24px',
-                      border: isChecked ? '1px solid #0071e3' : '1px solid #e5e5e5',
+                      backgroundColor: isChecked ? '#f0f6fc' : '#ffffff',
+                      borderRadius: '8px',
+                      padding: '16px 20px',
+                      border: isChecked ? '1px solid #005fb8' : '1px solid #e0e0e0',
                       display: 'flex',
                       justify: 'space-between',
                       alignItems: 'center',
-                      gap: '20px',
-                      boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
-                      transition: 'all 0.15s'
+                      gap: '16px',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                      transition: 'all 0.15s ease-in-out'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', flex: 1 }}>
                       {isAdmin && (
                         <input
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => toggleSelectDoc(doc.id)}
-                          style={{ marginTop: '6px', width: '18px', height: '18px', cursor: 'pointer' }}
+                          style={{ marginTop: '5px', width: '16px', height: '16px', cursor: 'pointer' }}
                         />
                       )}
 
                       <span style={{
-                        padding: '8px 12px',
-                        borderRadius: '8px',
+                        padding: '6px 10px',
+                        borderRadius: '4px',
                         backgroundColor: isLink ? '#f3e8ff' : doc.fileType === 'XLSX' ? '#e6f4ea' : doc.fileType === 'DOCX' ? '#e8f2ff' : '#fce8e6',
-                        color: isLink ? '#7e22ce' : doc.fileType === 'XLSX' ? '#137333' : doc.fileType === 'DOCX' ? '#1a73e8' : '#c5221f',
-                        fontSize: '12px',
+                        color: isLink ? '#7e22ce' : doc.fileType === 'XLSX' ? '#137333' : doc.fileType === 'DOCX' ? '#005fb8' : '#c5221f',
+                        fontSize: '11.5px',
                         fontWeight: 700,
-                        marginTop: '2px'
+                        marginTop: '1px'
                       }}>
                         {isLink ? '🔗 LINK' : doc.fileType}
                       </span>
 
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#1d1d1f' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#1a1a1a' }}>
                             {doc.title}
                           </h3>
-                          <span style={{ fontSize: '11px', backgroundColor: '#f2f2f7', color: '#86868b', padding: '2px 8px', borderRadius: '10px' }}>
-                            v{doc.version}
+                          <span style={{ fontSize: '11px', backgroundColor: '#f3f3f3', color: '#616161', padding: '2px 6px', borderRadius: '4px' }}>
+                            ฉบับที่ {doc.version}
                           </span>
                         </div>
 
-                        <p style={{ margin: '4px 0 8px 0', fontSize: '13.5px', color: '#515154', lineHeight: 1.4 }}>
+                        <p style={{ margin: '4px 0 6px 0', fontSize: '13px', color: '#424242', lineHeight: 1.4 }}>
                           {doc.description}
                         </p>
 
-                        <div style={{ fontSize: '12px', color: '#86868b' }}>
-                          ฝ่าย: <strong>{doc.department}</strong> • อัปเดตเมื่อ: {doc.createdAt}
+                        <div style={{ fontSize: '12px', color: '#616161' }}>
+                          หน่วยงานรับผิดชอบ: <strong>{doc.department}</strong> • ปรับปรุงล่าสุด: {doc.createdAt}
                         </div>
                       </div>
                     </div>
 
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                      <button onClick={() => setPreviewDoc(doc)} style={{ padding: '8px 16px', backgroundColor: '#f2f2f7', color: '#1d1d1f', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}>👁️ ดู</button>
+                      <button onClick={() => setPreviewDoc(doc)} style={win11SecondaryBtn}>👁️ แสดงรายละเอียด</button>
                       
                       {isLink ? (
                         <a
                           href={doc.fileUrl}
                           target="_blank"
                           rel="noreferrer"
-                          style={{ padding: '8px 18px', backgroundColor: '#7e22ce', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 6px rgba(126, 34, 206, 0.25)' }}
+                          style={{ ...win11PrimaryBtn, backgroundColor: '#7e22ce', borderColor: '#7e22ce', textDecoration: 'none' }}
                         >
-                          <span>🔗</span>
-                          <span>เปิดลิงก์แจ้งซ่อม</span>
+                          🔗 เข้าสู่ระบบ
                         </a>
                       ) : (
                         <a
                           href={doc.fileUrl}
                           download={doc.fileName}
-                          style={{ padding: '8px 18px', backgroundColor: '#0071e3', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 6px rgba(0, 113, 227, 0.2)' }}
+                          style={{ ...win11PrimaryBtn, textDecoration: 'none' }}
                         >
-                          <span>⬇️</span>
-                          <span>ดาวน์โหลด</span>
+                          ⬇️ ดาวน์โหลด
                         </a>
                       )}
                     </div>
@@ -548,38 +837,38 @@ export default function Accounting() {
 
       {/* Preview Modal */}
       {previewDoc && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', width: '100%', maxWidth: '580px', padding: '32px', boxShadow: '0 20px 40px rgba(0,0,0,0.15)', border: '1px solid #e5e5e5' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', width: '100%', maxWidth: '520px', padding: '24px', boxShadow: '0 12px 32px rgba(0,0,0,0.18)', border: '1px solid #e0e0e0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
               <div>
-                <span style={{ fontSize: '11px', backgroundColor: previewDoc.fileType === 'LINK' ? '#f3e8ff' : '#e8f2ff', color: previewDoc.fileType === 'LINK' ? '#7e22ce' : '#0071e3', padding: '3px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                  {previewDoc.fileType === 'LINK' ? '🔗 ลิงก์ระบบภายนอก' : previewDoc.fileType} • Version {previewDoc.version}
+                <span style={{ fontSize: '11px', backgroundColor: previewDoc.fileType === 'LINK' ? '#f3e8ff' : '#e5f0fb', color: previewDoc.fileType === 'LINK' ? '#7e22ce' : '#005fb8', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                  {previewDoc.fileType === 'LINK' ? '🔗 ลิงก์ระบบภายนอก' : previewDoc.fileType} • ฉบับที่ {previewDoc.version}
                 </span>
-                <h3 style={{ margin: '8px 0 0 0', fontSize: '18px', fontWeight: 700 }}>{previewDoc.title}</h3>
+                <h3 style={{ margin: '8px 0 0 0', fontSize: '17px', fontWeight: 700 }}>{previewDoc.title}</h3>
               </div>
-              <button onClick={() => setPreviewDoc(null)} style={{ background: 'none', border: 'none', fontSize: '20px', color: '#86868b', cursor: 'pointer' }}>✕</button>
+              <button onClick={() => setPreviewDoc(null)} style={{ border: 'none', background: 'none', fontSize: '18px', color: '#616161', cursor: 'pointer' }}>✕</button>
             </div>
 
-            <div style={{ backgroundColor: '#f9f9fb', padding: '16px', borderRadius: '12px', border: '1px solid #e5e5e5', marginBottom: '20px', fontSize: '13.5px', color: '#515154', lineHeight: 1.6 }}>
-              📌 <strong>รายละเอียด:</strong><br />
+            <div style={{ backgroundColor: '#f9f9f9', padding: '14px', borderRadius: '6px', border: '1px solid #e0e0e0', marginBottom: '16px', fontSize: '13px', color: '#424242', lineHeight: 1.5 }}>
+              📌 <strong>วัตถุประสงค์และรายละเอียด:</strong><br />
               {previewDoc.description}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px', color: '#86868b', marginBottom: '24px' }}>
-              <div><strong>ผู้รับผิดชอบ:</strong> {previewDoc.department}</div>
-              <div><strong>วันที่อัปโหลด:</strong> {previewDoc.createdAt}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '12.5px', color: '#616161', marginBottom: '20px' }}>
+              <div><strong>หน่วยงานผู้ดูแล:</strong> {previewDoc.department}</div>
+              <div><strong>วันที่บันทึก:</strong> {previewDoc.createdAt}</div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid #e5e5e5', paddingTop: '20px' }}>
-              <button onClick={() => setPreviewDoc(null)} style={{ padding: '10px 20px', backgroundColor: '#ffffff', border: '1px solid #d2d2d7', borderRadius: '10px', fontSize: '13px', cursor: 'pointer' }}>ปิดหน้าต่าง</button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button onClick={() => setPreviewDoc(null)} style={win11SecondaryBtn}>ปิดหน้าต่าง</button>
               
               {previewDoc.fileType === 'LINK' ? (
-                <a href={previewDoc.fileUrl} target="_blank" rel="noreferrer" style={{ padding: '10px 24px', backgroundColor: '#7e22ce', color: '#ffffff', borderRadius: '10px', fontSize: '13px', fontWeight: 600, textDecoration: 'none' }}>
-                  🔗 เปิดไปยังหน้าแจ้งซ่อม
+                <a href={previewDoc.fileUrl} target="_blank" rel="noreferrer" style={{ ...win11PrimaryBtn, backgroundColor: '#7e22ce', borderColor: '#7e22ce', textDecoration: 'none' }}>
+                  🔗 เชื่อมโยงระบบ
                 </a>
               ) : (
-                <a href={previewDoc.fileUrl} download={previewDoc.fileName} style={{ padding: '10px 24px', backgroundColor: '#0071e3', color: '#ffffff', borderRadius: '10px', fontSize: '13px', fontWeight: 600, textDecoration: 'none' }}>
-                  ⬇️ ดาวน์โหลดไฟล์เอกสาร
+                <a href={previewDoc.fileUrl} download={previewDoc.fileName} style={{ ...win11PrimaryBtn, textDecoration: 'none' }}>
+                  ⬇️ ดาวน์โหลดเอกสาร
                 </a>
               )}
             </div>
@@ -589,114 +878,305 @@ export default function Accounting() {
 
       {/* Categorize Modal */}
       {isCategoryModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', width: '100%', maxWidth: '440px', padding: '28px', boxShadow: '0 20px 40px rgba(0,0,0,0.15)' }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '17px', fontWeight: 600 }}>📁 ย้ายหมวดหมู่แบบฟอร์ม ({selectedDocIds.length} รายการ)</h3>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', width: '100%', maxWidth: '420px', padding: '24px', boxShadow: '0 12px 32px rgba(0,0,0,0.18)' }}>
+            <h3 style={{ margin: '0 0 14px 0', fontSize: '16px', fontWeight: 600 }}>📁 เปลี่ยนหมวดหมู่แบบฟอร์ม ({selectedDocIds.length} รายการ)</h3>
             
-            <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '8px' }}>เลือกหมวดหมู่ปลายทาง:</label>
-            <select value={targetCategory} onChange={e => setTargetCategory(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #d2d2d7', backgroundColor: '#f5f5f7', fontSize: '14px', outline: 'none', marginBottom: '24px' }}>
-              {categoriesList.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+            <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>เลือกหมวดหมู่ปลายทาง:</label>
+            <select value={targetCategory} onChange={e => setTargetCategory(e.target.value)} style={{ ...win11Input, width: '100%', marginBottom: '20px' }}>
+              {categoryGroups.map((group, idx) => (
+                <optgroup key={idx} label={group.groupName}>
+                  {group.items.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </optgroup>
+              ))}
             </select>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button onClick={() => setIsCategoryModalOpen(false)} style={{ padding: '9px 18px', backgroundColor: '#ffffff', border: '1px solid #d2d2d7', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>ยกเลิก</button>
-              <button onClick={handleBatchCategorizeSubmit} style={{ padding: '9px 22px', backgroundColor: '#0071e3', color: '#ffffff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>บันทึกย้ายหมวดหมู่</button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button onClick={() => setIsCategoryModalOpen(false)} style={win11SecondaryBtn}>ยกเลิก</button>
+              <button onClick={handleBatchCategorizeSubmit} style={win11PrimaryBtn}>บันทึกข้อมูล</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Admin Add Modal (โยนไฟล์เข้า Supabase Storage หรือ ลิงก์) */}
-      {isAddModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', width: '100%', maxWidth: '640px', padding: '32px', boxShadow: '0 20px 40px rgba(0,0,0,0.15)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e5e5e5', paddingBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>📤 อัปโหลดแบบฟอร์ม / เพิ่มลิงก์ลง Supabase</h3>
-              <button onClick={() => setIsAddModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', color: '#86868b', cursor: 'pointer' }}>✕</button>
+      {/* 🪟 Windows 11 Full Screen Edit Modal */}
+      {isEditModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: '#f3f3f3', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          
+          {/* Header */}
+          <header style={{ height: '52px', padding: '0 24px', backgroundColor: '#ffffff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button onClick={() => setIsEditModalOpen(false)} style={win11SecondaryBtn}>
+                ← ย้อนกลับ
+              </button>
+              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1a1a1a' }}>แก้ไขข้อมูลแบบฟอร์มเอกสาร</h2>
             </div>
 
-            <form onSubmit={handleUploadSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" onClick={() => setIsEditModalOpen(false)} style={win11SecondaryBtn}>
+                ยกเลิก
+              </button>
+              <button onClick={handleEditSubmit} disabled={isLoading} style={win11PrimaryBtn}>
+                {isLoading ? 'กำลังบันทึก...' : 'บันทึกการปรับปรุง'}
+              </button>
+            </div>
+          </header>
+
+          {/* Form Body - 2 Column Balanced Layout */}
+          <form onSubmit={handleEditSubmit} style={{ flex: 1, overflowY: 'auto', padding: '28px 40px', display: 'flex', justifyContent: 'center' }}>
+            <div style={{ width: '100%', maxWidth: '1000px', display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', alignItems: 'start' }}>
               
-              <div>
-                <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '8px' }}>รูปแบบข้อมูลที่จะเพิ่ม</label>
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <label style={{ fontSize: '13.5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Left Column: Form Details */}
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', padding: '24px', border: '1px solid #e0e0e0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>
+                  📌 รายละเอียดแบบฟอร์ม
+                </h3>
+
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>ชื่อแบบฟอร์มเอกสาร *</label>
+                  <input type="text" required value={editFormData.title} onChange={e => setEditFormData({ ...editFormData, title: e.target.value })} style={{ ...win11Input, width: '100%' }} />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>หมวดหมู่เอกสาร</label>
+                    <select value={editFormData.category} onChange={e => setEditFormData({ ...editFormData, category: e.target.value, department: getDeptByCategory(e.target.value) })} style={{ ...win11Input, width: '100%' }}>
+                      {categoryGroups.map((group, idx) => (
+                        <optgroup key={idx} label={group.groupName}>
+                          {group.items.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>หน่วยงานรับผิดชอบ</label>
+                    <input type="text" value={editFormData.department} onChange={e => setEditFormData({ ...editFormData, department: e.target.value })} style={{ ...win11Input, width: '100%' }} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>เลขฉบับปรับปรุง (Version)</label>
+                  <input type="text" value={editFormData.version} onChange={e => setEditFormData({ ...editFormData, version: e.target.value })} style={{ ...win11Input, width: '100%' }} />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>คำอธิบายและวัตถุประสงค์</label>
+                  <textarea rows="4" value={editFormData.description} onChange={e => setEditFormData({ ...editFormData, description: e.target.value })} style={{ ...win11Input, width: '100%', resize: 'vertical' }} />
+                </div>
+              </div>
+
+              {/* Right Column: File Source Panel */}
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', padding: '24px', border: '1px solid #e0e0e0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>
+                  📁 รูปแบบการจัดเก็บข้อมูล
+                </h3>
+
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '8px' }}>เลือกประเภทการแนบข้อมูล</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{
+                      padding: '12px',
+                      borderRadius: '6px',
+                      border: editFormData.dataType === 'file' ? '2px solid #005fb8' : '1px solid #d1d1d1',
+                      backgroundColor: editFormData.dataType === 'file' ? '#f0f6fc' : '#ffffff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px'
+                    }}>
+                      <input type="radio" name="editDataType" value="file" checked={editFormData.dataType === 'file'} onChange={() => setEditFormData({ ...editFormData, dataType: 'file' })} />
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>📄 แนบไฟล์เอกสารมาตรฐาน</div>
+                        <div style={{ fontSize: '11.5px', color: '#616161' }}>ไฟล์ .docx, .xlsx, .pdf</div>
+                      </div>
+                    </label>
+
+                    <label style={{
+                      padding: '12px',
+                      borderRadius: '6px',
+                      border: editFormData.dataType === 'link' ? '2px solid #7e22ce' : '1px solid #d1d1d1',
+                      backgroundColor: editFormData.dataType === 'link' ? '#f3e8ff' : '#ffffff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px'
+                    }}>
+                      <input type="radio" name="editDataType" value="link" checked={editFormData.dataType === 'link'} onChange={() => setEditFormData({ ...editFormData, dataType: 'link' })} />
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>🔗 ลิงก์เชื่อมโยงระบบภายนอก</div>
+                        <div style={{ fontSize: '11.5px', color: '#616161' }}>URL ระบบงานออนไลน์ หรือ Google Drive</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {editFormData.dataType === 'link' ? (
+                  <div style={{ backgroundColor: '#f3e8ff', padding: '14px', borderRadius: '6px', border: '1px solid #d8b4fe' }}>
+                    <label style={{ fontSize: '12.5px', fontWeight: 600, color: '#6b21a8', display: 'block', marginBottom: '6px' }}>🔗 URL ลิงก์ระบบภายนอก *</label>
                     <input
-                      type="radio"
-                      name="dataType"
-                      value="file"
-                      checked={formData.dataType === 'file'}
-                      onChange={() => setFormData({ ...formData, dataType: 'file' })}
+                      type="url"
+                      required
+                      value={editFormData.externalUrl}
+                      onChange={e => setEditFormData({ ...editFormData, externalUrl: e.target.value })}
+                      placeholder="https://..."
+                      style={{ ...win11Input, width: '100%' }}
                     />
-                    📄 แนบไฟล์เอกสาร (ส่งขึ้น Supabase Storage)
-                  </label>
-                  <label style={{ fontSize: '13.5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  </div>
+                ) : (
+                  <div style={{ backgroundColor: '#f9f9f9', padding: '18px', borderRadius: '6px', border: '2px dashed #d1d1d1', textAlign: 'center' }}>
+                    <div style={{ fontSize: '22px', marginBottom: '4px' }}>📄</div>
+                    <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>อัปโหลดไฟล์ฉบับใหม่ (กรณีเปลี่ยนไฟล์)</label>
+                    <input type="file" accept=".xlsx,.xls,.docx,.doc,.pdf" onChange={e => setEditFormData({ ...editFormData, file: e.target.files[0] })} style={{ fontSize: '12px', cursor: 'pointer' }} />
+                    {editFormData.existingFileName && (
+                      <span style={{ fontSize: '11.5px', color: '#616161', marginTop: '8px', display: 'block' }}>
+                        ไฟล์เดิม: {editFormData.existingFileName}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* 🪟 Windows 11 Full Screen Add Modal */}
+      {isAddModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: '#f3f3f3', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          
+          {/* Header */}
+          <header style={{ height: '52px', padding: '0 24px', backgroundColor: '#ffffff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button onClick={() => setIsAddModalOpen(false)} style={win11SecondaryBtn}>
+                ← ย้อนกลับ
+              </button>
+              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1a1a1a' }}>เพิ่มแบบฟอร์มเอกสาร / ลิงก์ระบบภายนอก</h2>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" onClick={() => setIsAddModalOpen(false)} style={win11SecondaryBtn}>
+                ยกเลิก
+              </button>
+              <button onClick={handleUploadSubmit} disabled={isLoading} style={win11PrimaryBtn}>
+                {isLoading ? 'กำลังนำเข้า...' : 'บันทึกแบบฟอร์ม'}
+              </button>
+            </div>
+          </header>
+
+          {/* Form Body - 2 Column Balanced Layout */}
+          <form onSubmit={handleUploadSubmit} style={{ flex: 1, overflowY: 'auto', padding: '28px 40px', display: 'flex', justifyContent: 'center' }}>
+            <div style={{ width: '100%', maxWidth: '1000px', display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', alignItems: 'start' }}>
+              
+              {/* Left Column: Form Details */}
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', padding: '24px', border: '1px solid #e0e0e0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>
+                  📌 รายละเอียดแบบฟอร์ม
+                </h3>
+
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>ชื่อแบบฟอร์มเอกสาร *</label>
+                  <input type="text" required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="เช่น ใบขออนุมัติปฏิบัติงานนอกสถานที่" style={{ ...win11Input, width: '100%' }} />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>หมวดหมู่เอกสาร</label>
+                    <select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value, department: getDeptByCategory(e.target.value) })} style={{ ...win11Input, width: '100%' }}>
+                      {categoryGroups.map((group, idx) => (
+                        <optgroup key={idx} label={group.groupName}>
+                          {group.items.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>หน่วยงานรับผิดชอบ</label>
+                    <input type="text" value={formData.department} onChange={e => setFormData({ ...formData, department: e.target.value })} placeholder="เช่น ฝ่ายเทคโนโลยีสารสนเทศ" style={{ ...win11Input, width: '100%' }} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>เลขฉบับปรับปรุง (Version)</label>
+                  <input type="text" value={formData.version} onChange={e => setFormData({ ...formData, version: e.target.value })} placeholder="1.0" style={{ ...win11Input, width: '100%' }} />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>คำอธิบายและวัตถุประสงค์</label>
+                  <textarea rows="4" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="ระบุรายละเอียด หรือวัตถุประสงค์ในการใช้งาน..." style={{ ...win11Input, width: '100%', resize: 'vertical' }} />
+                </div>
+              </div>
+
+              {/* Right Column: File Source Panel */}
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', padding: '24px', border: '1px solid #e0e0e0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>
+                  📁 รูปแบบการจัดเก็บข้อมูล
+                </h3>
+
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '8px' }}>เลือกประเภทการแนบข้อมูล</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{
+                      padding: '12px',
+                      borderRadius: '6px',
+                      border: formData.dataType === 'file' ? '2px solid #005fb8' : '1px solid #d1d1d1',
+                      backgroundColor: formData.dataType === 'file' ? '#f0f6fc' : '#ffffff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px'
+                    }}>
+                      <input type="radio" name="dataType" value="file" checked={formData.dataType === 'file'} onChange={() => setFormData({ ...formData, dataType: 'file' })} />
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>📄 แนบไฟล์เอกสารมาตรฐาน</div>
+                        <div style={{ fontSize: '11.5px', color: '#616161' }}>อัปโหลดสู่ระบบ Supabase Storage (.docx, .xlsx, .pdf)</div>
+                      </div>
+                    </label>
+
+                    <label style={{
+                      padding: '12px',
+                      borderRadius: '6px',
+                      border: formData.dataType === 'link' ? '2px solid #7e22ce' : '1px solid #d1d1d1',
+                      backgroundColor: formData.dataType === 'link' ? '#f3e8ff' : '#ffffff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px'
+                    }}>
+                      <input type="radio" name="dataType" value="link" checked={formData.dataType === 'link'} onChange={() => setFormData({ ...formData, dataType: 'link' })} />
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>🔗 ลิงก์ระบบภายนอก</div>
+                        <div style={{ fontSize: '11.5px', color: '#616161' }}>URL ระบบงานออนไลน์ หรือ Google Drive</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {formData.dataType === 'link' ? (
+                  <div style={{ backgroundColor: '#f3e8ff', padding: '14px', borderRadius: '6px', border: '1px solid #d8b4fe' }}>
+                    <label style={{ fontSize: '12.5px', fontWeight: 600, color: '#6b21a8', display: 'block', marginBottom: '6px' }}>🔗 URL ลิงก์ระบบภายนอก *</label>
                     <input
-                      type="radio"
-                      name="dataType"
-                      value="link"
-                      checked={formData.dataType === 'link'}
-                      onChange={() => setFormData({ ...formData, dataType: 'link' })}
+                      type="url"
+                      required
+                      value={formData.externalUrl}
+                      onChange={e => setFormData({ ...formData, externalUrl: e.target.value })}
+                      placeholder="https://..."
+                      style={{ ...win11Input, width: '100%' }}
                     />
-                    🔗 ลิงก์ระบบภายนอก (เช่น ระบบแจ้งซ่อม IT)
-                  </label>
-                </div>
+                  </div>
+                ) : (
+                  <div style={{ backgroundColor: '#f9f9f9', padding: '18px', borderRadius: '6px', border: '2px dashed #d1d1d1', textAlign: 'center' }}>
+                    <div style={{ fontSize: '22px', marginBottom: '4px' }}>📄</div>
+                    <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>อัปโหลดไฟล์เอกสาร *</label>
+                    <input type="file" required accept=".xlsx,.xls,.docx,.doc,.pdf" onChange={e => setFormData({ ...formData, file: e.target.files[0] })} style={{ fontSize: '12px', cursor: 'pointer' }} />
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>ชื่อรายการ *</label>
-                <input type="text" required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="เช่น แบบฟอร์มขออนุมัติการลา หรือ ระบบแจ้งซ่อม IT Online" style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid #d2d2d7', backgroundColor: '#f5f5f7', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>หมวดหมู่</label>
-                  <select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value, department: getDeptByCategory(e.target.value) })} style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #d2d2d7', backgroundColor: '#f5f5f7', fontSize: '13.5px', outline: 'none', boxSizing: 'border-box' }}>
-                    {categoriesList.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>ผู้รับผิดชอบ</label>
-                  <input type="text" value={formData.department} onChange={e => setFormData({ ...formData, department: e.target.value })} placeholder="เช่น ฝ่ายสารสนเทศ" style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #d2d2d7', backgroundColor: '#f5f5f7', fontSize: '13.5px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>เวอร์ชัน</label>
-                  <input type="text" value={formData.version} onChange={e => setFormData({ ...formData, version: e.target.value })} placeholder="1.0" style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #d2d2d7', backgroundColor: '#f5f5f7', fontSize: '13.5px', outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>คำอธิบายรายละเอียด</label>
-                <textarea rows="2" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="ระบุวัตถุประสงค์ หรือคำแนะนำในการใช้งาน..." style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid #d2d2d7', backgroundColor: '#f5f5f7', fontSize: '14px', outline: 'none', boxSizing: 'border-box', resize: 'vertical' }} />
-              </div>
-
-              {formData.dataType === 'link' ? (
-                <div style={{ backgroundColor: '#f3e8ff', padding: '18px', borderRadius: '12px', border: '1px solid #d8b4fe' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 600, color: '#6b21a8', display: 'block', marginBottom: '6px' }}>🔗 ระบุ URL ลิงก์แจ้งซ่อม / ระบบภายนอก *</label>
-                  <input
-                    type="url"
-                    required
-                    value={formData.externalUrl}
-                    onChange={e => setFormData({ ...formData, externalUrl: e.target.value })}
-                    placeholder="https://helpdesk.company.com หรือ https://forms.google.com/..."
-                    style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #c084fc', backgroundColor: '#ffffff', fontSize: '13.5px', outline: 'none', boxSizing: 'border-box' }}
-                  />
-                </div>
-              ) : (
-                <div style={{ backgroundColor: '#f9f9fb', padding: '18px', borderRadius: '12px', border: '1px dashed #c7c7cc' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>📄 แนบไฟล์ส่งเข้า Supabase Storage (.xlsx, .docx, .pdf) *</label>
-                  <input type="file" required accept=".xlsx,.xls,.docx,.doc,.pdf" onChange={e => setFormData({ ...formData, file: e.target.files[0] })} style={{ width: '100%', fontSize: '13px', cursor: 'pointer' }} />
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px', borderTop: '1px solid #e5e5e5', paddingTop: '20px' }}>
-                <button type="button" onClick={() => setIsAddModalOpen(false)} style={{ padding: '10px 22px', backgroundColor: '#ffffff', border: '1px solid #d2d2d7', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px' }}>ยกเลิก</button>
-                <button type="submit" disabled={isLoading} style={{ padding: '10px 28px', backgroundColor: '#0071e3', color: '#ffffff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontSize: '13.5px', fontWeight: 600 }}>{isLoading ? 'กำลังบันทึกลง Supabase...' : 'อัปโหลดลง Supabase'}</button>
-              </div>
-            </form>
-          </div>
+            </div>
+          </form>
         </div>
       )}
 
