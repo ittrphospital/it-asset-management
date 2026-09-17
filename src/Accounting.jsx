@@ -25,7 +25,7 @@ export default function Accounting() {
   const [documentList, setDocumentList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   
-  // 👁️ Full Screen File Viewer State
+  // 👁️ Fullscreen File Viewer State
   const [previewDoc, setPreviewDoc] = useState(null);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -63,7 +63,6 @@ export default function Accounting() {
   // 🪟 Windows 11 Font Stack
   const fluentFontStack = '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Sukhumvit Set", Tahoma, sans-serif';
 
-  // 📂 ปรับปรุงหมวดหมู่โดยถอดกลุ่ม "เอกสารเสนอขออนุมัติ" ออกเรียบร้อยแล้ว
   const categoryGroups = [
     {
       id: 'dept',
@@ -75,6 +74,14 @@ export default function Accounting() {
         { id: 'it', label: 'ฝ่ายเทคโนโลยีสารสนเทศ', icon: '🖥️', dept: 'ฝ่ายเทคโนโลยีสารสนเทศ' },
         { id: 'admin', label: 'ฝ่ายบริหารงานทั่วไป', icon: '🏢', dept: 'ฝ่ายบริหารงานทั่วไป' },
         { id: 'warehouse', label: 'ฝ่ายคลังสินค้า', icon: '📦', dept: 'ฝ่ายคลังสินค้า' },
+      ]
+    },
+    {
+      id: 'approval',
+      groupName: '✍️ เอกสารเสนอขออนุมัติ',
+      items: [
+        { id: 'req_supervisor', label: 'ขออนุมัติผู้บังคับบัญชา', icon: '📝', dept: 'ส่วนกลาง' },
+        { id: 'req_executive', label: 'ขออนุมัติผู้บริหาร', icon: '✒️', dept: 'ส่วนกลาง' },
       ]
     },
     {
@@ -214,8 +221,7 @@ export default function Accounting() {
         publicUrl = editFormData.externalUrl || '#';
         fileName = 'LINK';
       } else if (editFormData.file) {
-        const fileExt = editFormData.file.name.split('.').pop();
-        fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+        fileName = `${Date.now()}_${editFormData.file.name}`;
         const { error: uploadError } = await supabase.storage
           .from('accounting-forms')
           .upload(fileName, editFormData.file);
@@ -327,8 +333,10 @@ export default function Accounting() {
       let fileName = 'LINK';
 
       if (formData.dataType === 'file' && formData.file) {
-        const fileExt = formData.file.name.split('.').pop();
-        fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+        // ดึงเฉพาะนามสกุลไฟล์ (.xlsx, .pdf, .docx)
+const fileExt = formData.file.name.split('.').pop();
+// ตั้งชื่อไฟล์ใหม่ด้วย Timestamp และอักษรภาษาอังกฤษสุ่ม เพื่อหลีกเลี่ยงภาษาไทยและเว้นวรรค
+fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
         const { error: uploadError } = await supabase.storage
           .from('accounting-forms')
           .upload(fileName, formData.file);
@@ -352,7 +360,7 @@ export default function Accounting() {
             version: formData.version,
             description: formData.description,
             blank_file_url: publicUrl,
-            blank_file_name: fileName
+            blank_file_name: formData.dataType === 'file' && formData.file ? formData.file.name : 'LINK'
           }
         ]);
 
@@ -836,6 +844,7 @@ export default function Accounting() {
 
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
                       
+                      {/* 👁️ ปุ่มเปิดดูเอกสาร Full Screen */}
                       <button onClick={() => setPreviewDoc(doc)} style={win11SecondaryBtn}>
                         👁️ เปิดดูเอกสาร
                       </button>
@@ -868,10 +877,11 @@ export default function Accounting() {
         </main>
       </div>
 
-      {/* Full Screen File Viewer Modal */}
+      {/* 👁️ 🪟 Full Screen File Viewer Modal (เปิดเต็มจอ 100vw x 100vh) */}
       {previewDoc && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: '#ffffff', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           
+          {/* Top Control Bar */}
           <header style={{ height: '52px', padding: '0 20px', backgroundColor: '#ffffff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <button onClick={() => setPreviewDoc(null)} style={win11SecondaryBtn}>
@@ -900,6 +910,7 @@ export default function Accounting() {
             </div>
           </header>
 
+          {/* Full Screen Embedded Viewer Body */}
           <div style={{ flex: 1, backgroundColor: '#f3f3f3', overflow: 'hidden' }}>
             {renderFileViewer(previewDoc)}
           </div>
@@ -930,7 +941,7 @@ export default function Accounting() {
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* 🪟 Windows 11 Full Screen Edit Modal */}
       {isEditModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: '#f3f3f3', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <header style={{ height: '52px', padding: '0 24px', backgroundColor: '#ffffff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -1020,7 +1031,7 @@ export default function Accounting() {
         </div>
       )}
 
-      {/* Add Modal */}
+      {/* 🪟 Windows 11 Full Screen Add Modal */}
       {isAddModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: '#f3f3f3', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <header style={{ height: '52px', padding: '0 24px', backgroundColor: '#ffffff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
