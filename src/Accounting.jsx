@@ -12,7 +12,6 @@ export default function Accounting() {
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // State สำหรับเปิด-ปิดกลุ่มย่อยใน Sidebar
   const [openGroupIds, setOpenGroupIds] = useState([]);
 
   // Selection & Filter State
@@ -25,7 +24,10 @@ export default function Accounting() {
   // Data & Modal State
   const [documentList, setDocumentList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // 👁️ Fullscreen File Viewer State
   const [previewDoc, setPreviewDoc] = useState(null);
+
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -61,7 +63,6 @@ export default function Accounting() {
   // 🪟 Windows 11 Font Stack
   const fluentFontStack = '"Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Sukhumvit Set", Tahoma, sans-serif';
 
-  // 📌 กลุ่มหมวดหมู่ภาษาไทยเป็นทางการ
   const categoryGroups = [
     {
       id: 'dept',
@@ -435,10 +436,56 @@ export default function Accounting() {
     boxSizing: 'border-box'
   };
 
+  // 🔍 Full Screen File Viewer Renderer
+  const renderFileViewer = (doc) => {
+    if (!doc || !doc.fileUrl || doc.fileUrl === '#') {
+      return <div style={{ padding: '40px', textAlign: 'center', color: '#616161' }}>ไม่พบ URL สำหรับแสดงผลไฟล์</div>;
+    }
+
+    const type = doc.fileType.toUpperCase();
+
+    if (type === 'PDF') {
+      return (
+        <iframe
+          src={doc.fileUrl}
+          title={doc.title}
+          style={{ width: '100%', height: '100%', border: 'none' }}
+        />
+      );
+    }
+
+    if (type === 'DOCX' || type === 'DOC' || type === 'XLSX' || type === 'XLS' || type === 'PPTX') {
+      const officeViewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(doc.fileUrl)}`;
+      return (
+        <iframe
+          src={officeViewerUrl}
+          title={doc.title}
+          style={{ width: '100%', height: '100%', border: 'none' }}
+        />
+      );
+    }
+
+    return (
+      <div style={{ padding: '40px', textAlign: 'center' }}>
+        <p style={{ fontSize: '15px', color: '#1a1a1a', marginBottom: '16px' }}>
+          เอกสารนี้เป็นลิงก์เชื่อมโยงไปยังระบบภายนอก
+        </p>
+        <a
+          href={doc.fileUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{ ...win11PrimaryBtn, backgroundColor: '#7e22ce', borderColor: '#7e22ce', textDecoration: 'none' }}
+        >
+          🔗 เปิดลิงก์ระบบในหน้าต่างใหม่ ↗
+        </a>
+      </div>
+    );
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f3f3f3', color: '#1a1a1a', fontFamily: fluentFontStack }}>
       
-      {/* 1. TOP TOOLBAR */}
+      {/* TOP TOOLBAR */}
       <header style={{ height: '52px', backgroundColor: '#ffffff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', padding: '0 20px', justifyContent: 'space-between', flexShrink: 0, position: 'sticky', top: 0, zIndex: 100 }}>
         
         {isAdmin && selectedDocIds.length > 0 ? (
@@ -465,10 +512,10 @@ export default function Accounting() {
 
               <nav style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                 <button 
-                  onClick={() => { setSelectedCategory('all'); setCurrentTab('home'); }} 
-                  style={currentTab === 'home' && selectedCategory === 'all' ? win11PrimaryBtn : win11SecondaryBtn}
+                  onClick={() => { setSelectedCategory('all'); setCurrentTab('all'); }} 
+                  style={win11PrimaryBtn}
                 >
-                  🏠 หน้าหลัก
+                  🏠 แบบฟอร์มเอกสารทั้งหมด
                 </button>
 
                 {/* 📁 หมวดหมู่ Dropdown Menu */}
@@ -514,7 +561,6 @@ export default function Accounting() {
                               key={cat.id}
                               onClick={() => {
                                 setSelectedCategory(cat.id);
-                                setCurrentTab('all');
                                 setIsCategoryDropdownOpen(false);
                               }}
                               style={{
@@ -537,13 +583,6 @@ export default function Accounting() {
                     </div>
                   )}
                 </div>
-
-                <button 
-                  onClick={() => { setSelectedCategory('all'); setCurrentTab('all'); }} 
-                  style={currentTab === 'all' && selectedCategory === 'all' ? win11PrimaryBtn : win11SecondaryBtn}
-                >
-                  📄 แบบฟอร์มทั้งหมด
-                </button>
               </nav>
             </div>
 
@@ -552,16 +591,15 @@ export default function Accounting() {
                 {isAdmin ? '🛠️ โหมด Admin' : '👤 โหมด User'}
               </button>
 
-              {!isAdmin ? (
-                <input
-                  type="text"
-                  placeholder="🔍 ค้นหาแบบฟอร์มเอกสาร..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{ ...win11Input, width: '200px' }}
-                />
-              ) : (
-                /* 📌 ปุ่มเพิ่มแบบฟอร์มเอกสาร สไตล์ Windows 11 Fluent Blue */
+              <input
+                type="text"
+                placeholder="🔍 ค้นหาแบบฟอร์มเอกสาร..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ ...win11Input, width: '200px' }}
+              />
+
+              {isAdmin && (
                 <button onClick={() => setIsAddModalOpen(true)} style={win11PrimaryBtn}>
                   <span>＋</span> <span>เพิ่มแบบฟอร์มเอกสาร</span>
                 </button>
@@ -572,7 +610,7 @@ export default function Accounting() {
 
       </header>
 
-      {/* 2. MAIN BODY LAYOUT */}
+      {/* MAIN BODY LAYOUT */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         
         {/* Left Sidebar Menu */}
@@ -592,7 +630,7 @@ export default function Accounting() {
               {isFavoritesOpen && (
                 <div style={{ paddingLeft: '12px', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <button
-                    onClick={() => { setSelectedCategory('all'); setCurrentTab('all'); }}
+                    onClick={() => { setSelectedCategory('all'); }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -664,10 +702,7 @@ export default function Accounting() {
                               return (
                                 <button
                                   key={cat.id}
-                                  onClick={() => {
-                                    setSelectedCategory(cat.id);
-                                    setCurrentTab('all');
-                                  }}
+                                  onClick={() => setSelectedCategory(cat.id)}
                                   style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -805,7 +840,11 @@ export default function Accounting() {
                     </div>
 
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                      <button onClick={() => setPreviewDoc(doc)} style={win11SecondaryBtn}>👁️ แสดงรายละเอียด</button>
+                      
+                      {/* 👁️ ปุ่มเปิดดูเอกสาร Full Screen */}
+                      <button onClick={() => setPreviewDoc(doc)} style={win11SecondaryBtn}>
+                        👁️ เปิดดูเอกสาร
+                      </button>
                       
                       {isLink ? (
                         <a
@@ -835,44 +874,44 @@ export default function Accounting() {
         </main>
       </div>
 
-      {/* Preview Modal */}
+      {/* 👁️ 🪟 Full Screen File Viewer Modal (เปิดเต็มจอ 100vw x 100vh) */}
       {previewDoc && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', width: '100%', maxWidth: '520px', padding: '24px', boxShadow: '0 12px 32px rgba(0,0,0,0.18)', border: '1px solid #e0e0e0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div>
-                <span style={{ fontSize: '11px', backgroundColor: previewDoc.fileType === 'LINK' ? '#f3e8ff' : '#e5f0fb', color: previewDoc.fileType === 'LINK' ? '#7e22ce' : '#005fb8', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                  {previewDoc.fileType === 'LINK' ? '🔗 ลิงก์ระบบภายนอก' : previewDoc.fileType} • ฉบับที่ {previewDoc.version}
-                </span>
-                <h3 style={{ margin: '8px 0 0 0', fontSize: '17px', fontWeight: 700 }}>{previewDoc.title}</h3>
-              </div>
-              <button onClick={() => setPreviewDoc(null)} style={{ border: 'none', background: 'none', fontSize: '18px', color: '#616161', cursor: 'pointer' }}>✕</button>
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: '#ffffff', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          
+          {/* Top Control Bar */}
+          <header style={{ height: '52px', padding: '0 20px', backgroundColor: '#ffffff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button onClick={() => setPreviewDoc(null)} style={win11SecondaryBtn}>
+                ✕ ปิดหน้าต่าง
+              </button>
+
+              <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '4px', fontWeight: 700, backgroundColor: previewDoc.fileType === 'LINK' ? '#f3e8ff' : '#e5f0fb', color: previewDoc.fileType === 'LINK' ? '#7e22ce' : '#005fb8' }}>
+                {previewDoc.fileType}
+              </span>
+
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1a1a1a' }}>
+                {previewDoc.title} <span style={{ fontSize: '12px', fontWeight: 400, color: '#616161' }}>(ฉบับที่ {previewDoc.version})</span>
+              </h3>
             </div>
 
-            <div style={{ backgroundColor: '#f9f9f9', padding: '14px', borderRadius: '6px', border: '1px solid #e0e0e0', marginBottom: '16px', fontSize: '13px', color: '#424242', lineHeight: 1.5 }}>
-              📌 <strong>วัตถุประสงค์และรายละเอียด:</strong><br />
-              {previewDoc.description}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <a
+                href={previewDoc.fileUrl}
+                download={previewDoc.fileName}
+                target="_blank"
+                rel="noreferrer"
+                style={{ ...win11PrimaryBtn, textDecoration: 'none' }}
+              >
+                ⬇️ ดาวน์โหลดไฟล์ลงเครื่อง
+              </a>
             </div>
+          </header>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '12.5px', color: '#616161', marginBottom: '20px' }}>
-              <div><strong>หน่วยงานผู้ดูแล:</strong> {previewDoc.department}</div>
-              <div><strong>วันที่บันทึก:</strong> {previewDoc.createdAt}</div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button onClick={() => setPreviewDoc(null)} style={win11SecondaryBtn}>ปิดหน้าต่าง</button>
-              
-              {previewDoc.fileType === 'LINK' ? (
-                <a href={previewDoc.fileUrl} target="_blank" rel="noreferrer" style={{ ...win11PrimaryBtn, backgroundColor: '#7e22ce', borderColor: '#7e22ce', textDecoration: 'none' }}>
-                  🔗 เชื่อมโยงระบบ
-                </a>
-              ) : (
-                <a href={previewDoc.fileUrl} download={previewDoc.fileName} style={{ ...win11PrimaryBtn, textDecoration: 'none' }}>
-                  ⬇️ ดาวน์โหลดเอกสาร
-                </a>
-              )}
-            </div>
+          {/* Full Screen Embedded Viewer Body */}
+          <div style={{ flex: 1, backgroundColor: '#f3f3f3', overflow: 'hidden' }}>
+            {renderFileViewer(previewDoc)}
           </div>
+
         </div>
       )}
 
@@ -902,41 +941,26 @@ export default function Accounting() {
       {/* 🪟 Windows 11 Full Screen Edit Modal */}
       {isEditModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: '#f3f3f3', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          
-          {/* Header */}
           <header style={{ height: '52px', padding: '0 24px', backgroundColor: '#ffffff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <button onClick={() => setIsEditModalOpen(false)} style={win11SecondaryBtn}>
-                ← ย้อนกลับ
-              </button>
+              <button onClick={() => setIsEditModalOpen(false)} style={win11SecondaryBtn}>← ย้อนกลับ</button>
               <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1a1a1a' }}>แก้ไขข้อมูลแบบฟอร์มเอกสาร</h2>
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" onClick={() => setIsEditModalOpen(false)} style={win11SecondaryBtn}>
-                ยกเลิก
-              </button>
-              <button onClick={handleEditSubmit} disabled={isLoading} style={win11PrimaryBtn}>
-                {isLoading ? 'กำลังบันทึก...' : 'บันทึกการปรับปรุง'}
-              </button>
+              <button type="button" onClick={() => setIsEditModalOpen(false)} style={win11SecondaryBtn}>ยกเลิก</button>
+              <button onClick={handleEditSubmit} disabled={isLoading} style={win11PrimaryBtn}>{isLoading ? 'กำลังบันทึก...' : 'บันทึกการปรับปรุง'}</button>
             </div>
           </header>
 
-          {/* Form Body - 2 Column Balanced Layout */}
           <form onSubmit={handleEditSubmit} style={{ flex: 1, overflowY: 'auto', padding: '28px 40px', display: 'flex', justifyContent: 'center' }}>
             <div style={{ width: '100%', maxWidth: '1000px', display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', alignItems: 'start' }}>
-              
-              {/* Left Column: Form Details */}
               <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', padding: '24px', border: '1px solid #e0e0e0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>
-                  📌 รายละเอียดแบบฟอร์ม
-                </h3>
-
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>📌 รายละเอียดแบบฟอร์ม</h3>
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>ชื่อแบบฟอร์มเอกสาร *</label>
                   <input type="text" required value={editFormData.title} onChange={e => setEditFormData({ ...editFormData, title: e.target.value })} style={{ ...win11Input, width: '100%' }} />
                 </div>
-
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>หมวดหมู่เอกสาร</label>
@@ -948,43 +972,27 @@ export default function Accounting() {
                       ))}
                     </select>
                   </div>
-
                   <div>
                     <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>หน่วยงานรับผิดชอบ</label>
                     <input type="text" value={editFormData.department} onChange={e => setEditFormData({ ...editFormData, department: e.target.value })} style={{ ...win11Input, width: '100%' }} />
                   </div>
                 </div>
-
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>เลขฉบับปรับปรุง (Version)</label>
                   <input type="text" value={editFormData.version} onChange={e => setEditFormData({ ...editFormData, version: e.target.value })} style={{ ...win11Input, width: '100%' }} />
                 </div>
-
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>คำอธิบายและวัตถุประสงค์</label>
                   <textarea rows="4" value={editFormData.description} onChange={e => setEditFormData({ ...editFormData, description: e.target.value })} style={{ ...win11Input, width: '100%', resize: 'vertical' }} />
                 </div>
               </div>
 
-              {/* Right Column: File Source Panel */}
               <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', padding: '24px', border: '1px solid #e0e0e0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>
-                  📁 รูปแบบการจัดเก็บข้อมูล
-                </h3>
-
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>📁 รูปแบบการจัดเก็บข้อมูล</h3>
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '8px' }}>เลือกประเภทการแนบข้อมูล</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <label style={{
-                      padding: '12px',
-                      borderRadius: '6px',
-                      border: editFormData.dataType === 'file' ? '2px solid #005fb8' : '1px solid #d1d1d1',
-                      backgroundColor: editFormData.dataType === 'file' ? '#f0f6fc' : '#ffffff',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px'
-                    }}>
+                    <label style={{ padding: '12px', borderRadius: '6px', border: editFormData.dataType === 'file' ? '2px solid #005fb8' : '1px solid #d1d1d1', backgroundColor: editFormData.dataType === 'file' ? '#f0f6fc' : '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <input type="radio" name="editDataType" value="file" checked={editFormData.dataType === 'file'} onChange={() => setEditFormData({ ...editFormData, dataType: 'file' })} />
                       <div>
                         <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>📄 แนบไฟล์เอกสารมาตรฐาน</div>
@@ -992,16 +1000,7 @@ export default function Accounting() {
                       </div>
                     </label>
 
-                    <label style={{
-                      padding: '12px',
-                      borderRadius: '6px',
-                      border: editFormData.dataType === 'link' ? '2px solid #7e22ce' : '1px solid #d1d1d1',
-                      backgroundColor: editFormData.dataType === 'link' ? '#f3e8ff' : '#ffffff',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px'
-                    }}>
+                    <label style={{ padding: '12px', borderRadius: '6px', border: editFormData.dataType === 'link' ? '2px solid #7e22ce' : '1px solid #d1d1d1', backgroundColor: editFormData.dataType === 'link' ? '#f3e8ff' : '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <input type="radio" name="editDataType" value="link" checked={editFormData.dataType === 'link'} onChange={() => setEditFormData({ ...editFormData, dataType: 'link' })} />
                       <div>
                         <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>🔗 ลิงก์เชื่อมโยงระบบภายนอก</div>
@@ -1014,29 +1013,16 @@ export default function Accounting() {
                 {editFormData.dataType === 'link' ? (
                   <div style={{ backgroundColor: '#f3e8ff', padding: '14px', borderRadius: '6px', border: '1px solid #d8b4fe' }}>
                     <label style={{ fontSize: '12.5px', fontWeight: 600, color: '#6b21a8', display: 'block', marginBottom: '6px' }}>🔗 URL ลิงก์ระบบภายนอก *</label>
-                    <input
-                      type="url"
-                      required
-                      value={editFormData.externalUrl}
-                      onChange={e => setEditFormData({ ...editFormData, externalUrl: e.target.value })}
-                      placeholder="https://..."
-                      style={{ ...win11Input, width: '100%' }}
-                    />
+                    <input type="url" required value={editFormData.externalUrl} onChange={e => setEditFormData({ ...editFormData, externalUrl: e.target.value })} placeholder="https://..." style={{ ...win11Input, width: '100%' }} />
                   </div>
                 ) : (
                   <div style={{ backgroundColor: '#f9f9f9', padding: '18px', borderRadius: '6px', border: '2px dashed #d1d1d1', textAlign: 'center' }}>
                     <div style={{ fontSize: '22px', marginBottom: '4px' }}>📄</div>
                     <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>อัปโหลดไฟล์ฉบับใหม่ (กรณีเปลี่ยนไฟล์)</label>
                     <input type="file" accept=".xlsx,.xls,.docx,.doc,.pdf" onChange={e => setEditFormData({ ...editFormData, file: e.target.files[0] })} style={{ fontSize: '12px', cursor: 'pointer' }} />
-                    {editFormData.existingFileName && (
-                      <span style={{ fontSize: '11.5px', color: '#616161', marginTop: '8px', display: 'block' }}>
-                        ไฟล์เดิม: {editFormData.existingFileName}
-                      </span>
-                    )}
                   </div>
                 )}
               </div>
-
             </div>
           </form>
         </div>
@@ -1045,36 +1031,22 @@ export default function Accounting() {
       {/* 🪟 Windows 11 Full Screen Add Modal */}
       {isAddModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: '#f3f3f3', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          
-          {/* Header */}
           <header style={{ height: '52px', padding: '0 24px', backgroundColor: '#ffffff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <button onClick={() => setIsAddModalOpen(false)} style={win11SecondaryBtn}>
-                ← ย้อนกลับ
-              </button>
+              <button onClick={() => setIsAddModalOpen(false)} style={win11SecondaryBtn}>← ย้อนกลับ</button>
               <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1a1a1a' }}>เพิ่มแบบฟอร์มเอกสาร / ลิงก์ระบบภายนอก</h2>
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" onClick={() => setIsAddModalOpen(false)} style={win11SecondaryBtn}>
-                ยกเลิก
-              </button>
-              <button onClick={handleUploadSubmit} disabled={isLoading} style={win11PrimaryBtn}>
-                {isLoading ? 'กำลังนำเข้า...' : 'บันทึกแบบฟอร์ม'}
-              </button>
+              <button type="button" onClick={() => setIsAddModalOpen(false)} style={win11SecondaryBtn}>ยกเลิก</button>
+              <button onClick={handleUploadSubmit} disabled={isLoading} style={win11PrimaryBtn}>{isLoading ? 'กำลังนำเข้า...' : 'บันทึกแบบฟอร์ม'}</button>
             </div>
           </header>
 
-          {/* Form Body - 2 Column Balanced Layout */}
           <form onSubmit={handleUploadSubmit} style={{ flex: 1, overflowY: 'auto', padding: '28px 40px', display: 'flex', justifyContent: 'center' }}>
             <div style={{ width: '100%', maxWidth: '1000px', display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', alignItems: 'start' }}>
-              
-              {/* Left Column: Form Details */}
               <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', padding: '24px', border: '1px solid #e0e0e0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>
-                  📌 รายละเอียดแบบฟอร์ม
-                </h3>
-
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>📌 รายละเอียดแบบฟอร์ม</h3>
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>ชื่อแบบฟอร์มเอกสาร *</label>
                   <input type="text" required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="เช่น ใบขออนุมัติปฏิบัติงานนอกสถานที่" style={{ ...win11Input, width: '100%' }} />
@@ -1091,7 +1063,6 @@ export default function Accounting() {
                       ))}
                     </select>
                   </div>
-
                   <div>
                     <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>หน่วยงานรับผิดชอบ</label>
                     <input type="text" value={formData.department} onChange={e => setFormData({ ...formData, department: e.target.value })} placeholder="เช่น ฝ่ายเทคโนโลยีสารสนเทศ" style={{ ...win11Input, width: '100%' }} />
@@ -1109,42 +1080,20 @@ export default function Accounting() {
                 </div>
               </div>
 
-              {/* Right Column: File Source Panel */}
               <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', padding: '24px', border: '1px solid #e0e0e0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>
-                  📁 รูปแบบการจัดเก็บข้อมูล
-                </h3>
-
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px' }}>📁 รูปแบบการจัดเก็บข้อมูล</h3>
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '8px' }}>เลือกประเภทการแนบข้อมูล</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <label style={{
-                      padding: '12px',
-                      borderRadius: '6px',
-                      border: formData.dataType === 'file' ? '2px solid #005fb8' : '1px solid #d1d1d1',
-                      backgroundColor: formData.dataType === 'file' ? '#f0f6fc' : '#ffffff',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px'
-                    }}>
+                    <label style={{ padding: '12px', borderRadius: '6px', border: formData.dataType === 'file' ? '2px solid #005fb8' : '1px solid #d1d1d1', backgroundColor: formData.dataType === 'file' ? '#f0f6fc' : '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <input type="radio" name="dataType" value="file" checked={formData.dataType === 'file'} onChange={() => setFormData({ ...formData, dataType: 'file' })} />
                       <div>
                         <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>📄 แนบไฟล์เอกสารมาตรฐาน</div>
-                        <div style={{ fontSize: '11.5px', color: '#616161' }}>อัปโหลดสู่ระบบ Supabase Storage (.docx, .xlsx, .pdf)</div>
+                        <div style={{ fontSize: '11.5px', color: '#616161' }}>.docx, .xlsx, .pdf</div>
                       </div>
                     </label>
 
-                    <label style={{
-                      padding: '12px',
-                      borderRadius: '6px',
-                      border: formData.dataType === 'link' ? '2px solid #7e22ce' : '1px solid #d1d1d1',
-                      backgroundColor: formData.dataType === 'link' ? '#f3e8ff' : '#ffffff',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px'
-                    }}>
+                    <label style={{ padding: '12px', borderRadius: '6px', border: formData.dataType === 'link' ? '2px solid #7e22ce' : '1px solid #d1d1d1', backgroundColor: formData.dataType === 'link' ? '#f3e8ff' : '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <input type="radio" name="dataType" value="link" checked={formData.dataType === 'link'} onChange={() => setFormData({ ...formData, dataType: 'link' })} />
                       <div>
                         <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>🔗 ลิงก์ระบบภายนอก</div>
@@ -1157,14 +1106,7 @@ export default function Accounting() {
                 {formData.dataType === 'link' ? (
                   <div style={{ backgroundColor: '#f3e8ff', padding: '14px', borderRadius: '6px', border: '1px solid #d8b4fe' }}>
                     <label style={{ fontSize: '12.5px', fontWeight: 600, color: '#6b21a8', display: 'block', marginBottom: '6px' }}>🔗 URL ลิงก์ระบบภายนอก *</label>
-                    <input
-                      type="url"
-                      required
-                      value={formData.externalUrl}
-                      onChange={e => setFormData({ ...formData, externalUrl: e.target.value })}
-                      placeholder="https://..."
-                      style={{ ...win11Input, width: '100%' }}
-                    />
+                    <input type="url" required value={formData.externalUrl} onChange={e => setFormData({ ...formData, externalUrl: e.target.value })} placeholder="https://..." style={{ ...win11Input, width: '100%' }} />
                   </div>
                 ) : (
                   <div style={{ backgroundColor: '#f9f9f9', padding: '18px', borderRadius: '6px', border: '2px dashed #d1d1d1', textAlign: 'center' }}>
@@ -1174,7 +1116,6 @@ export default function Accounting() {
                   </div>
                 )}
               </div>
-
             </div>
           </form>
         </div>
